@@ -10,7 +10,7 @@ class Frog(pygame.sprite.Sprite):
         self.state, self.direction, self.index = "ALIVE", "UP", 0
         self.anim_timer, self.death_index, self.death_speed = 0, 0, 0.15
         self.margin, self.step = margin, TILE_SIZE
-        self.is_finished = False # CLAVE: Indica al motor que debe respawnear
+        self.is_finished = False 
         self.image = pygame.Surface((self.display_size, self.display_size), pygame.SRCALPHA)
         self.rect = self.image.get_rect()
         self.start_pos = (x + 2, y + 2)
@@ -49,7 +49,7 @@ class Frog(pygame.sprite.Sprite):
                 self.image = self.death_frames[int(self.death_index)]
                 self.death_index += self.death_speed
                 if self.death_index >= len(self.death_frames): 
-                    self.is_finished = True # Le dice al motor: "Ya morí del todo"
+                    self.is_finished = True 
             else: 
                 self.is_finished = True
         self.hitbox = self.rect.inflate(-22, -22)
