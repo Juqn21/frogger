@@ -3,7 +3,7 @@ import sys
 import random
 import os
 from arcade_machine_sdk import GameBase, GameMeta, BASE_WIDTH, BASE_HEIGHT
-from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME
+from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME, BASE_PATH
 from entities.frog import Frog
 from entities.obstacles import Car, Log, Turtle, Snake, Crocodile
 
@@ -11,8 +11,17 @@ class Game(GameBase):
     def __init__(self, metadata: GameMeta) -> None:
         super().__init__(metadata)
         pygame.font.init()
-        self.font_small = pygame.font.SysFont("Arial", 22, bold=True)
-        self.font_big = pygame.font.SysFont("Arial", 50, bold=True)
+        
+        # --- CARGA DE FUENTE RETRO ---
+        # Asumiendo la ruta assest/fonts/retropix.ttf según me indicaste
+        font_path = os.path.join(BASE_PATH, "assest", "fonts", "retropix.ttf")
+        if os.path.exists(font_path):
+            self.font_ui = pygame.font.Font(font_path, 22)
+            self.font_big = pygame.font.Font(font_path, 50)
+        else:
+            # Fallback en caso de que la ruta no coincida
+            self.font_ui = pygame.font.SysFont("Arial", 22, bold=True)
+            self.font_big = pygame.font.SysFont("Arial", 50, bold=True)
         
         self.state = "START"
         self.lives = 5
@@ -24,14 +33,15 @@ class Game(GameBase):
         
         self.background = None
         self.goal_image = None
+        
+        # Configuración de slots y posición inicial
         self.slots_rangos = [(MARGIN_X + 59 + (i*120), MARGIN_X + 99 + (i*120)) for i in range(5)]
         self.slots_ocupados = [False] * 5
         self.start_x = MARGIN_X + 300
         self.start_y = OFFSET_Y + (14 * TILE_SIZE)
         
+        # Grupos de sprites
         self.cars, self.logs, self.turtles, self.snakes, self.crocodiles = [pygame.sprite.Group() for _ in range(5)]
-        self.trunk_snake = None 
-        self.target_log = None  
         
         self.reset_game_logic()
 
@@ -46,13 +56,12 @@ class Game(GameBase):
     def reset_level_entities(self):
         for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles]:
             group.empty()
-        self.trunk_snake = None
-        self.target_log = None
         self._setup_entities()
         self.spawn_frog()
 
     def _setup_entities(self):
         m = self.difficulty_multiplier
+        # Tráfico
         traffic = [(7, -2.2*m, 0, 45, [100, 350, 550]), (8, 1.6*m, 1, 40, [50, 400]), 
                    (9, -1.8*m, 2, 40, [150, 210, 270]), (10, 1.3*m, 3, 55, [0, 350]), 
                    (11, -1.5*m, 1, 40, [0, 160, 320, 480]), (12, 1.9*m, 2, 40, [20, 280, 520])]
@@ -60,26 +69,24 @@ class Game(GameBase):
             y = OFFSET_Y + (r * TILE_SIZE)
             for px in pos: self.cars.add(Car(MARGIN_X + px, y, s, idx, MARGIN_X, 640, w))
         
-        y_r = [OFFSET_Y + (i * TILE_SIZE) for i in range(5, 1, -1)]
-        row1_logs = []
-        for i in range(4):
-            l = Log(MARGIN_X + (i*160), OFFSET_Y + (5 * TILE_SIZE), -1.2*m, MARGIN_X, 640, 95, 2)
-            self.logs.add(l)
-            row1_logs.append(l)
-
+        # Troncos y Tortugas
+        y_r = [OFFSET_Y + (i * TILE_SIZE) for i in range(5, 0, -1)]
+        for i in range(4): self.logs.add(Log(MARGIN_X + (i*160), y_r[0], -1.2*m, MARGIN_X, 640, 95, 2))
         for g in range(3): 
-            for i in range(2): self.turtles.add(Turtle(MARGIN_X + (g*220) + (i*46), OFFSET_Y + (4 * TILE_SIZE), 2.0*m, MARGIN_X, 640, group_offset=g*6.0))
+            for i in range(2): self.turtles.add(Turtle(MARGIN_X + (g*220) + (i*46), y_r[1], 2.0*m, MARGIN_X, 640, group_offset=g*6.0))
         
+        # Cocodrilos y troncos fila 3
         pos_f3 = [0, 220, 440]
         c_idx = random.randint(0, 2) if self.level >= 2 else -1
         for i, px in enumerate(pos_f3):
-            if i == c_idx: self.crocodiles.add(Crocodile(MARGIN_X + px, OFFSET_Y + (3 * TILE_SIZE), -1.8*m, MARGIN_X, 640))
-            else: self.logs.add(Log(MARGIN_X + px, OFFSET_Y + (3 * TILE_SIZE), -1.8*m, MARGIN_X, 640, 180, 3))
+            if i == c_idx: self.crocodiles.add(Crocodile(MARGIN_X + px, y_r[2], -1.8*m, MARGIN_X, 640))
+            else: self.logs.add(Log(MARGIN_X + px, y_r[2], -1.8*m, MARGIN_X, 640, 180, 3))
 
         for g in range(3): 
-            for i in range(3): self.turtles.add(Turtle(MARGIN_X + (g*210) + (i*46), OFFSET_Y + (2 * TILE_SIZE), 1.5*m, MARGIN_X, 640, group_offset=g*5.0))
-        for i in range(3): self.logs.add(Log(MARGIN_X + (i*250), OFFSET_Y + (TILE_SIZE), -2.2*m, MARGIN_X, 640, 120, 1))
+            for i in range(3): self.turtles.add(Turtle(MARGIN_X + (g*210) + (i*46), y_r[3], 1.5*m, MARGIN_X, 640, group_offset=g*5.0))
+        for i in range(3): self.logs.add(Log(MARGIN_X + (i*250), y_r[4], -2.2*m, MARGIN_X, 640, 120, 1))
 
+        # Serpientes según nivel
         if self.level >= 2:
             self.snakes.add(Snake(MARGIN_X + 100, OFFSET_Y + (6 * TILE_SIZE), 2.0*m, MARGIN_X, 640))
         if self.level >= 3:
@@ -100,7 +107,7 @@ class Game(GameBase):
                     self.handle_death()
                     return
             
-            # Colisiones con coches y serpientes
+            # Colisiones con enemigos
             if not self.god_mode:
                 for enemy in list(self.cars) + list(self.snakes):
                     if self.frog.hitbox.colliderect(enemy.hitbox): 
@@ -171,16 +178,16 @@ class Game(GameBase):
         surface.fill((0, 0, 0))
         
         if self.state == "START":
-            txt = self.font_big.render("FROGGER", True, (0, 255, 0))
-            surface.blit(txt, (BASE_WIDTH//2-txt.get_width()//2, 200))
+            txt = self.font_big.render("PULSA TECLA", True, (0, 255, 0))
+            surface.blit(txt, (BASE_WIDTH//2-txt.get_width()//2, 350))
         elif self.state == "PLAYING":
             if not self.background: self.background = pygame.image.load(MAP_PATH).convert()
             if not self.goal_image: self.goal_image = pygame.transform.scale(pygame.image.load(GOAL_PATH).convert_alpha(), (34, 34))
             
-            # MAPA COMPLETO
+            # 1. Dibuja el Mapa Completo
             surface.blit(self.background, (0, 0))
             
-            # RECORTE DE OBSTÁCULOS
+            # 2. Recorte de Sprites (Clip) para que no se vean fuera de los 640px
             clip_rect = pygame.Rect(MARGIN_X, 0, 640, BASE_HEIGHT)
             surface.set_clip(clip_rect)
             
@@ -193,20 +200,23 @@ class Game(GameBase):
             for gp in [self.turtles, self.logs, self.crocodiles, self.snakes, self.cars, self.all_sprites]:
                 gp.draw(surface)
             
-            surface.set_clip(None)
+            surface.set_clip(None) # Quita el recorte para la UI
             
-            # UI
-            self._draw_text_shadow(surface, f"SCORE: {self.score}", (10, 20))
-            self._draw_text_shadow(surface, f"LEVEL: {self.level}", (10, 50))
-            self._draw_text_shadow(surface, f"LIVES: {self.lives}", (10, 80), (255, 50, 50))
-            if self.god_mode: self._draw_text_shadow(surface, "GOD MODE: ON", (10, 180), (255, 140, 0))
+            # 3. Dibujar UI sobre el Mapa
+            # Ajusta estas posiciones (X, Y) para que queden sobre tus textos del mapa
+            self._draw_text_with_shadow(surface, f"SCORE: {self.score:05d}", (MARGIN_X + 20, 20))
+            self._draw_text_with_shadow(surface, f"LEVEL: {self.level}", (MARGIN_X + 500, 20))
+            self._draw_text_with_shadow(surface, f"LIVES: {self.lives}", (MARGIN_X + 260, 755), (255, 50, 50))
+            
+            if self.god_mode:
+                self._draw_text_with_shadow(surface, "GOD MODE", (10, 200), (255, 140, 0))
 
         elif self.state == "GAME_OVER":
             txt = self.font_big.render("GAME OVER", True, (255, 0, 0))
-            surface.blit(txt, (BASE_WIDTH//2-txt.get_width()//2, 150))
+            surface.blit(txt, (BASE_WIDTH//2-txt.get_width()//2, 350))
 
-    def _draw_text_shadow(self, surface, text, pos, color=(255, 255, 255)):
-        shadow = self.font_small.render(text, True, (0, 0, 0))
-        txt = self.font_small.render(text, True, color)
+    def _draw_text_with_shadow(self, surface, text, pos, color=(255, 255, 255)):
+        shadow = self.font_ui.render(text, True, (0, 0, 0))
+        txt = self.font_ui.render(text, True, color)
         surface.blit(shadow, (pos[0]+2, pos[1]+2))
         surface.blit(txt, pos)
