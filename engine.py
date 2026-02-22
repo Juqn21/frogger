@@ -39,7 +39,6 @@ class Game(GameBase):
         
         self.cars, self.logs, self.turtles, self.snakes, self.crocodiles = [pygame.sprite.Group() for _ in range(5)]
         
-        # Variables para la serpiente en el tronco
         self.trunk_snake = None
         self.target_log = None
         
@@ -56,7 +55,6 @@ class Game(GameBase):
     def reset_level_entities(self):
         for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles]:
             group.empty()
-        
         self.trunk_snake = None
         self.target_log = None
         self._setup_entities()
@@ -75,7 +73,6 @@ class Game(GameBase):
         # Río
         y_r = [OFFSET_Y + (i * TILE_SIZE) for i in range(5, 0, -1)]
         
-        # Fila 1 de troncos (Guardamos la referencia para ponerle la serpiente luego)
         row1_logs = []
         for i in range(4): 
             l = Log(MARGIN_X + (i*160), y_r[0], -1.2*m, MARGIN_X, 640, 95, 2)
@@ -95,13 +92,10 @@ class Game(GameBase):
             for i in range(3): self.turtles.add(Turtle(MARGIN_X + (g*210) + (i*46), y_r[3], 1.5*m, MARGIN_X, 640, group_offset=g*5.0))
         for i in range(3): self.logs.add(Log(MARGIN_X + (i*250), y_r[4], -2.2*m, MARGIN_X, 640, 120, 1))
 
-        # --- APARICIÓN DE SERPIENTES POR NIVEL ---
-        if self.level >= 2: 
-            self.snakes.add(Snake(MARGIN_X + 100, OFFSET_Y + (6 * TILE_SIZE), 2.0*m, MARGIN_X, 640))
-        if self.level >= 3: 
-            self.snakes.add(Snake(MARGIN_X + 400, OFFSET_Y + (13 * TILE_SIZE), 2.0*m, MARGIN_X, 640))
+        if self.level >= 2: self.snakes.add(Snake(MARGIN_X + 100, OFFSET_Y + (6 * TILE_SIZE), 2.0*m, MARGIN_X, 640))
+        if self.level >= 3: self.snakes.add(Snake(MARGIN_X + 400, OFFSET_Y + (13 * TILE_SIZE), 2.0*m, MARGIN_X, 640))
         
-        # A partir del nivel 4, una serpiente cabalga sobre un tronco aleatorio de la primera fila
+        # Serpiente en el tronco a partir del nivel 4
         if self.level >= 4 and row1_logs:
             self.target_log = random.choice(row1_logs)
             self.trunk_snake = Snake(self.target_log.rect.x, y_r[0], self.target_log.speed, MARGIN_X, 640)
@@ -128,7 +122,7 @@ class Game(GameBase):
                         self.handle_death()
                         return
 
-            # 2. Lógica del Río
+            # 2. LÓGICA DEL RÍO (ARREGLADA USANDO EL CENTRO DE LA RANA)
             frog_center_y = self.frog.hitbox.centery
             river_top = OFFSET_Y + TILE_SIZE
             river_bottom = OFFSET_Y + 6 * TILE_SIZE
@@ -179,11 +173,9 @@ class Game(GameBase):
 
         # Actualizar la posición de las serpientes
         for s in self.snakes:
-            # Si es la serpiente del tronco, que siga al tronco
             if s == self.trunk_snake and self.target_log:
-                s.rect.x = self.target_log.rect.x + 10 # Centrado un poco sobre el tronco
+                s.rect.x = self.target_log.rect.x + 10 
             else:
-                # Serpientes normales que rebotan en los bordes
                 if s.rect.left <= MARGIN_X: s.speed = abs(s.speed)
                 elif s.rect.right >= MARGIN_X + 640: s.speed = -abs(s.speed)
 
@@ -220,7 +212,7 @@ class Game(GameBase):
         surface.fill((0, 0, 0))
         
         if self.state == "START":
-            txt = self.font_big.render("PULSA TECLA", True, (0, 255, 0))
+            txt = self.font_big.render("PULSA TECLA", False, (0, 255, 0))
             surface.blit(txt, (BASE_WIDTH//2-txt.get_width()//2, 350))
         elif self.state == "PLAYING":
             if not self.background: self.background = pygame.image.load(MAP_PATH).convert()
@@ -243,19 +235,28 @@ class Game(GameBase):
             
             surface.set_clip(None)
             
-            # UI con sombras y fuente Retro
-            self._draw_text_with_shadow(surface, f"SCORE: {self.score:05d}", (MARGIN_X + 25, 18))
-            self._draw_text_with_shadow(surface, f"LEVEL: {self.level}", (MARGIN_X + 505, 18))
-            self._draw_text_with_shadow(surface, f"LIVES: {self.lives}", (MARGIN_X + 270, 755), (255, 50, 50))
+            # UI con sombras, sin antialiasing, y tus nuevas coordenadas
+            self._draw_text_with_shadow(surface, f"SCORE: {self.score:05d}", (20, 119))
+            self._draw_text_with_shadow(surface, f"LEVEL: {self.level}", (20, 63))
+            self._draw_text_with_shadow(surface, f"LIVES: {self.lives}", (20, 175), (255, 50, 50))
             if self.god_mode:
                 self._draw_text_with_shadow(surface, "GOD MODE", (10, 200), (255, 140, 0))
 
         elif self.state == "GAME_OVER":
-            txt = self.font_big.render("GAME OVER", True, (255, 0, 0))
+            txt = self.font_big.render("GAME OVER", False, (255, 0, 0))
             surface.blit(txt, (BASE_WIDTH//2-txt.get_width()//2, 350))
 
     def _draw_text_with_shadow(self, surface, text, pos, color=(255, 255, 255)):
-        shadow = self.font_ui.render(text, True, (0, 0, 0))
-        txt = self.font_ui.render(text, True, color)
-        surface.blit(shadow, (pos[0]+2, pos[1]+2))
+        # Borde exterior grueso (apagando antialiasing con False)
+        offsets = [(-2, -2), (2, -2), (-2, 2), (2, 2), (-2, 0), (2, 0), (0, -2), (0, 2)]
+        for ox, oy in offsets:
+            borde = self.font_ui.render(text, False, (0, 0, 0))
+            surface.blit(borde, (pos[0] + ox, pos[1] + oy))
+            
+        # Sombra proyectada
+        shadow = self.font_ui.render(text, False, (0, 0, 0))
+        surface.blit(shadow, (pos[0] + 4, pos[1] + 4))
+        
+        # Texto base a color
+        txt = self.font_ui.render(text, False, color)
         surface.blit(txt, pos)
