@@ -136,6 +136,8 @@ class Turtle(pygame.sprite.Sprite):
         self.timer, self.anim_delay = group_offset, 0.06
         self.is_submerged = False
         self.hitbox = self.rect.inflate(2, 0)
+        # OPTIMIZACIÓN: Creamos la superficie vacía una sola vez
+        self.empty_surface = pygame.Surface((40, 32), pygame.SRCALPHA)
 
     def _load_frames(self):
         if os.path.exists(self.path):
@@ -152,7 +154,10 @@ class Turtle(pygame.sprite.Sprite):
         if cycle < 5: 
             if self.frames: self.image = self.frames[int(cycle)]
             self.is_submerged = (int(cycle) == 4)
-        elif cycle < 9: self.is_submerged, self.image = True, pygame.Surface((40, 32), pygame.SRCALPHA)
+        elif cycle < 9: 
+            # OPTIMIZACIÓN: Reutilizamos la superficie vacía sin ahogar el CPU
+            self.is_submerged = True
+            self.image = self.empty_surface 
         elif cycle < 13: 
             self.is_submerged = False
             if self.frames: self.image = self.frames[min(int(cycle)-9+5, 8)]
