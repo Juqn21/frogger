@@ -1,7 +1,8 @@
 import pygame
 import sys
+import os
 from states.base import State
-from constants import MENU_IMG_PATH
+from constants import MENU_IMG_PATH, MENU_MUSIC_PATH
 from arcade_machine_sdk import BASE_WIDTH, BASE_HEIGHT
 
 class MenuState(State):
@@ -19,6 +20,17 @@ class MenuState(State):
             except Exception as e:
                 print(f"Error cargando menu.png: {e}")
 
+        # --- REPRODUCIR MÚSICA DE MENÚ ---
+        if os.path.exists(MENU_MUSIC_PATH):
+            # get_busy() verifica que no esté sonando ya, para que no se reinicie la 
+            # canción si vas a OPTIONS y luego regresas al START
+            if not pygame.mixer.music.get_busy(): 
+                pygame.mixer.music.load(MENU_MUSIC_PATH)
+                pygame.mixer.music.set_volume(self.game.volume) # Usamos tu volumen guardado
+                pygame.mixer.music.play(-1) # -1 hace que se repita para siempre
+        else:
+            print(f"Advertencia: No se encontró {MENU_MUSIC_PATH}")
+
     def handle_events(self, events):
         for e in events:
             if e.type == pygame.KEYDOWN:
@@ -33,9 +45,10 @@ class MenuState(State):
                 elif e.key == pygame.K_RETURN:
                     selected = self.options[self.selected_index]
                     if selected == "START":
+                        pygame.mixer.music.stop() # <--- APAGAMOS LA MÚSICA AL JUGAR
                         self.game.change_state("PLAYING")
                     elif selected == "OPTIONS":
-                        print("Menú de opciones en construcción...") 
+                        self.game.change_state("OPTIONS") 
                     elif selected == "EXIT":
                         pygame.quit()
                         sys.exit()
@@ -51,7 +64,7 @@ class MenuState(State):
 
         for i, option in enumerate(self.options):
             if i == self.selected_index:
-                text_str = f"{option}"
+                text_str = f">{option}<"
                 color = (125, 33, 129)
             else:
                 text_str = option

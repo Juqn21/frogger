@@ -1,10 +1,11 @@
 import pygame
 import random
+import os  # <--- NUEVO IMPORT PARA LAS RUTAS
 from states.base import State
-from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME, GAME_WIDTH
+from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME, GAME_WIDTH, GAME_MUSIC_PATH
 from arcade_machine_sdk import BASE_WIDTH, BASE_HEIGHT
 from entities.frog import Frog
-from entities.obstacles import Car, Log, Turtle, Snake, Crocodile
+from entities.obstacles import Car, Log, Turtle, Snake, Crocodile, Coin
 
 class GameplayState(State):
     def __init__(self, game):
@@ -16,23 +17,38 @@ class GameplayState(State):
         self.start_x = MARGIN_X + 300
         self.start_y = OFFSET_Y + (14 * TILE_SIZE)
         
-        self.cars, self.logs, self.turtles, self.snakes, self.crocodiles = [pygame.sprite.Group() for _ in range(5)]
+        self.cars, self.logs, self.turtles, self.snakes, self.crocodiles, self.coins = [pygame.sprite.Group() for _ in range(6)]
         self.trunk_snake = None
         self.target_log = None
+        
+        self.next_coin_spawn_time = 0 
 
     def on_enter(self):
         if not self.background:
             self.background = pygame.image.load(MAP_PATH).convert()
         if not self.goal_image:
             self.goal_image = pygame.transform.scale(pygame.image.load(GOAL_PATH).convert_alpha(), (34, 34))
+            
+        # --- REPRODUCIR MÚSICA DE LA PARTIDA ---
+        if os.path.exists(GAME_MUSIC_PATH):
+            pygame.mixer.music.load(GAME_MUSIC_PATH)
+            pygame.mixer.music.set_volume(self.game.volume) # Mantiene el volumen que ajustaste en opciones
+            pygame.mixer.music.play(-1) # -1 significa loop infinito
+        else:
+            print(f"Advertencia: No se encontró {GAME_MUSIC_PATH}")
+            
         self.reset_level_entities()
 
     def reset_level_entities(self):
-        for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles]:
+        for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles, self.coins]:
             group.empty()
+            
         self.trunk_snake = None
         self.target_log = None
         self._setup_entities()
+        
+        self.next_coin_spawn_time = pygame.time.get_ticks() + random.randint(8000, 15000)
+        
         self.spawn_frog()
 
     def _setup_entities(self):
@@ -78,6 +94,14 @@ class GameplayState(State):
         self.max_row_reached = 14 
 
     def update(self, dt):
+        current_time = pygame.time.get_ticks()
+        
+        if current_time >= self.next_coin_spawn_time:
+            platforms = list(self.logs) + list(self.crocodiles)
+            new_coin = Coin(platforms)
+            self.coins.add(new_coin)
+            self.next_coin_spawn_time = current_time + random.randint(8000, 15000)
+
         if self.frog.state == "ALIVE":
             if not self.game.god_mode:
                 self.game.time_left -= dt
@@ -89,6 +113,11 @@ class GameplayState(State):
                     if self.frog.hitbox.colliderect(e.hitbox):
                         self.handle_death(); return
 
+            for c in self.coins:
+                if self.frog.rect.colliderect(c.hitbox):
+                    self.game._add_score(100) 
+                    c.kill() 
+                    
             frog_center_y = self.frog.hitbox.centery
             river_top, river_bottom = OFFSET_Y + TILE_SIZE, OFFSET_Y + 6 * TILE_SIZE
             
@@ -114,16 +143,16 @@ class GameplayState(State):
                 if on_safe_ground: self.frog.rect.x += platform_speed
                 elif not self.game.god_mode: self.handle_death(); return
 
-        # --- AQUÍ ESTÁ EL DELAY CON EL RETURN ---
         if self.frog.is_finished:
             if self.game.lives <= 0:
+                pygame.mixer.music.stop() # <--- APAGAMOS LA MÚSICA AL PERDER
                 self.game.change_state("GAME_OVER")
             else:
                 self.spawn_frog()
-            return # Detiene la ejecución para no actualizar una rana que ya terminó de morir
+            return 
 
         self.all_sprites.update()
-        for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles]: group.update()
+        for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles, self.coins]: group.update()
 
         for s in self.snakes:
             if s == self.trunk_snake and self.target_log: s.rect.x = self.target_log.rect.x + 10 
@@ -138,12 +167,18 @@ class GameplayState(State):
                 
                 if self.frog.state == "ALIVE":
                     old_y = self.frog.rect.y
-                    res = self.frog.move("UP", self.slots_rangos) if e.key == pygame.K_UP else \
-                          self.frog.move("DOWN") if e.key == pygame.K_DOWN else \
-                          self.frog.move("LEFT") if e.key == pygame.K_LEFT else \
-                          self.frog.move("RIGHT") if e.key == pygame.K_RIGHT else None
+                    res = None
                     
-                    if e.key == pygame.K_UP and self.frog.rect.y < old_y:
+                    if e.key == self.game.controls["UP"]: 
+                        res = self.frog.move("UP", self.slots_rangos)
+                    elif e.key == self.game.controls["DOWN"]: 
+                        res = self.frog.move("DOWN")
+                    elif e.key == self.game.controls["LEFT"]: 
+                        res = self.frog.move("LEFT")
+                    elif e.key == self.game.controls["RIGHT"]: 
+                        res = self.frog.move("RIGHT")
+                    
+                    if e.key == self.game.controls["UP"] and self.frog.rect.y < old_y:
                         current_row = (self.frog.rect.y - OFFSET_Y) // TILE_SIZE
                         if current_row < self.max_row_reached:
                             self.game._add_score(10)
@@ -166,7 +201,6 @@ class GameplayState(State):
     def handle_death(self):
         if self.frog.state == "ALIVE":
             self.game.lives -= 1
-            # Iniciamos la animación de la muerte
             self.frog.die()
 
     def render(self, surface):
@@ -180,7 +214,7 @@ class GameplayState(State):
                     x_p = (self.slots_rangos[i][0] + self.slots_rangos[i][1]) // 2 - 17
                     surface.blit(self.goal_image, (x_p, OFFSET_Y + 3))
         
-        for gp in [self.turtles, self.logs, self.crocodiles, self.snakes, self.cars, self.all_sprites]:
+        for gp in [self.turtles, self.logs, self.crocodiles, self.coins, self.snakes, self.cars, self.all_sprites]:
             gp.draw(surface)
         surface.set_clip(None)
         

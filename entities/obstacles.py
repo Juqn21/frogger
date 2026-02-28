@@ -1,6 +1,7 @@
 import pygame
 import os
-from constants import IMG_DIR
+import random 
+from constants import IMG_DIR, COIN_PATH, TILE_SIZE, MARGIN_X, OFFSET_Y, GAME_WIDTH
 
 class Snake(pygame.sprite.Sprite):
     def __init__(self, x, y, speed, margin_x, game_width):
@@ -136,7 +137,6 @@ class Turtle(pygame.sprite.Sprite):
         self.timer, self.anim_delay = group_offset, 0.06
         self.is_submerged = False
         self.hitbox = self.rect.inflate(2, 0)
-        # OPTIMIZACIÓN: Creamos la superficie vacía una sola vez
         self.empty_surface = pygame.Surface((40, 32), pygame.SRCALPHA)
 
     def _load_frames(self):
@@ -155,7 +155,6 @@ class Turtle(pygame.sprite.Sprite):
             if self.frames: self.image = self.frames[int(cycle)]
             self.is_submerged = (int(cycle) == 4)
         elif cycle < 9: 
-            # OPTIMIZACIÓN: Reutilizamos la superficie vacía sin ahogar el CPU
             self.is_submerged = True
             self.image = self.empty_surface 
         elif cycle < 13: 
@@ -168,3 +167,59 @@ class Turtle(pygame.sprite.Sprite):
         if self.speed > 0 and self.rect.left > self.margin_x + self.game_width: self.rect.right = self.margin_x
         elif self.speed < 0 and self.rect.right < self.margin_x: self.rect.left = self.margin_x + self.game_width
         self.hitbox = self.rect.inflate(2, 0)
+
+
+# --- MONEDA AUTÓNOMA (CADA UNA VIVE SUS PROPIOS 15 SEGUNDOS) ---
+class Coin(pygame.sprite.Sprite):
+    def __init__(self, platforms):
+        super().__init__()
+        self.size = 34  
+        self.image_orig = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
+        
+        if os.path.exists(COIN_PATH):
+            img = pygame.image.load(COIN_PATH).convert_alpha()
+            self.image_orig = pygame.transform.scale(img, (self.size, self.size))
+        else:
+            print(f"Advertencia: No se encontró {COIN_PATH}")
+            
+        self.image = self.image_orig.copy()
+        self.rect = self.image.get_rect()
+        self.hitbox = self.rect.copy() 
+        
+        # Guarda el momento exacto en el que nació
+        self.spawn_time = pygame.time.get_ticks()
+        
+        self.parent_platform = None
+        self.offset_x = 0
+        
+        # Le decimos que se posicione ni bien nazca
+        self._place_coin(platforms)
+
+    def _place_coin(self, platforms):
+        in_water = random.choice([True, False])
+        
+        if in_water and platforms:
+            plat = random.choice(platforms)
+            self.parent_platform = plat
+            self.offset_x = (plat.rect.width - self.size) // 2
+            self.rect.x = plat.rect.x + self.offset_x
+            self.rect.y = plat.rect.y + (plat.rect.height - self.size) // 2
+        else:
+            self.parent_platform = None
+            row = random.randint(6, 13)
+            col = random.randint(0, 15)
+            self.rect.x = MARGIN_X + (col * TILE_SIZE) + (TILE_SIZE - self.size) // 2
+            self.rect.y = OFFSET_Y + (row * TILE_SIZE) + (TILE_SIZE - self.size) // 2
+            
+        self.hitbox = self.rect.copy()
+
+    def update(self):
+        # Si pasaron 15 segundos (15000 ms) desde que nació, se destruye sola
+        if pygame.time.get_ticks() - self.spawn_time > 15000:
+            self.kill()
+            return
+
+        # Si está montada en algo, se mueve con ese algo
+        if self.parent_platform:
+            self.rect.x = self.parent_platform.rect.x + self.offset_x
+            self.hitbox = self.rect.copy()
