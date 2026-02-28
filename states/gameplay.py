@@ -1,7 +1,7 @@
 import pygame
 import random
 from states.base import State
-from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME
+from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME, GAME_WIDTH
 from arcade_machine_sdk import BASE_WIDTH, BASE_HEIGHT
 from entities.frog import Frog
 from entities.obstacles import Car, Log, Turtle, Snake, Crocodile
@@ -42,33 +42,33 @@ class GameplayState(State):
                    (11, -1.5*m, 1, 40, [0, 160, 320, 480]), (12, 1.9*m, 2, 40, [20, 280, 520])]
         for r, s, idx, w, pos in traffic:
             y = OFFSET_Y + (r * TILE_SIZE)
-            for px in pos: self.cars.add(Car(MARGIN_X + px, y, s, idx, MARGIN_X, 640, w))
+            for px in pos: self.cars.add(Car(MARGIN_X + px, y, s, idx, MARGIN_X, GAME_WIDTH, w))
         
         y_r = [OFFSET_Y + (i * TILE_SIZE) for i in range(5, 0, -1)]
         row1_logs = []
         for i in range(4): 
-            l = Log(MARGIN_X + (i*160), y_r[0], -1.2*m, MARGIN_X, 640, 95, 2)
+            l = Log(MARGIN_X + (i*160), y_r[0], -1.2*m, MARGIN_X, GAME_WIDTH, 95, 2)
             self.logs.add(l)
             row1_logs.append(l)
             
         for g in range(3): 
-            for i in range(2): self.turtles.add(Turtle(MARGIN_X + (g*220) + (i*46), y_r[1], 2.0*m, MARGIN_X, 640, group_offset=g*6.0))
+            for i in range(2): self.turtles.add(Turtle(MARGIN_X + (g*220) + (i*46), y_r[1], 2.0*m, MARGIN_X, GAME_WIDTH, group_offset=g*6.0))
         
         pos_f3 = [0, 220, 440]
         c_idx = random.randint(0, 2) if self.game.level >= 2 else -1
         for i, px in enumerate(pos_f3):
-            if i == c_idx: self.crocodiles.add(Crocodile(MARGIN_X + px, y_r[2], -1.8*m, MARGIN_X, 640))
-            else: self.logs.add(Log(MARGIN_X + px, y_r[2], -1.8*m, MARGIN_X, 640, 180, 3))
+            if i == c_idx: self.crocodiles.add(Crocodile(MARGIN_X + px, y_r[2], -1.8*m, MARGIN_X, GAME_WIDTH))
+            else: self.logs.add(Log(MARGIN_X + px, y_r[2], -1.8*m, MARGIN_X, GAME_WIDTH, 180, 3))
 
         for g in range(3): 
-            for i in range(3): self.turtles.add(Turtle(MARGIN_X + (g*210) + (i*46), y_r[3], 1.5*m, MARGIN_X, 640, group_offset=g*5.0))
-        for i in range(3): self.logs.add(Log(MARGIN_X + (i*250), y_r[4], -2.2*m, MARGIN_X, 640, 120, 1))
+            for i in range(3): self.turtles.add(Turtle(MARGIN_X + (g*210) + (i*46), y_r[3], 1.5*m, MARGIN_X, GAME_WIDTH, group_offset=g*5.0))
+        for i in range(3): self.logs.add(Log(MARGIN_X + (i*250), y_r[4], -2.2*m, MARGIN_X, GAME_WIDTH, 120, 1))
 
-        if self.game.level >= 2: self.snakes.add(Snake(MARGIN_X + 100, OFFSET_Y + (6 * TILE_SIZE), 2.0*m, MARGIN_X, 640))
-        if self.game.level >= 3: self.snakes.add(Snake(MARGIN_X + 400, OFFSET_Y + (13 * TILE_SIZE), 2.0*m, MARGIN_X, 640))
+        if self.game.level >= 2: self.snakes.add(Snake(MARGIN_X + 100, OFFSET_Y + (6 * TILE_SIZE), 2.0*m, MARGIN_X, GAME_WIDTH))
+        if self.game.level >= 3: self.snakes.add(Snake(MARGIN_X + 400, OFFSET_Y + (13 * TILE_SIZE), 2.0*m, MARGIN_X, GAME_WIDTH))
         if self.game.level >= 4 and row1_logs:
             self.target_log = random.choice(row1_logs)
-            self.trunk_snake = Snake(self.target_log.rect.x, y_r[0], self.target_log.speed, MARGIN_X, 640)
+            self.trunk_snake = Snake(self.target_log.rect.x, y_r[0], self.target_log.speed, MARGIN_X, GAME_WIDTH)
             self.snakes.add(self.trunk_snake)
 
     def spawn_frog(self):
@@ -114,7 +114,14 @@ class GameplayState(State):
                 if on_safe_ground: self.frog.rect.x += platform_speed
                 elif not self.game.god_mode: self.handle_death(); return
 
-        if self.frog.is_finished: self.spawn_frog()
+        # --- AQUÍ ESTÁ EL DELAY CON EL RETURN ---
+        if self.frog.is_finished:
+            if self.game.lives <= 0:
+                self.game.change_state("GAME_OVER")
+            else:
+                self.spawn_frog()
+            return # Detiene la ejecución para no actualizar una rana que ya terminó de morir
+
         self.all_sprites.update()
         for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles]: group.update()
 
@@ -122,7 +129,7 @@ class GameplayState(State):
             if s == self.trunk_snake and self.target_log: s.rect.x = self.target_log.rect.x + 10 
             else:
                 if s.rect.left <= MARGIN_X: s.speed = abs(s.speed)
-                elif s.rect.right >= MARGIN_X + 640: s.speed = -abs(s.speed)
+                elif s.rect.right >= MARGIN_X + GAME_WIDTH: s.speed = -abs(s.speed)
 
     def handle_events(self, events):
         for e in events:
@@ -159,14 +166,13 @@ class GameplayState(State):
     def handle_death(self):
         if self.frog.state == "ALIVE":
             self.game.lives -= 1
-            if self.game.lives <= 0: self.game.change_state("GAME_OVER")
-            else: self.frog.die()
+            # Iniciamos la animación de la muerte
+            self.frog.die()
 
     def render(self, surface):
-        # ¡AQUÍ ESTÁ EL ARREGLO! Exactamente como en tu engine.py original
         surface.blit(self.background, (0, 0))
         
-        clip_rect = pygame.Rect(MARGIN_X, 0, 640, BASE_HEIGHT)
+        clip_rect = pygame.Rect(MARGIN_X, 0, GAME_WIDTH, BASE_HEIGHT)
         surface.set_clip(clip_rect)
         if self.goal_image:
             for i, oc in enumerate(self.game.slots_ocupados):

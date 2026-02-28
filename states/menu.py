@@ -51,7 +51,7 @@ class MenuState(State):
 
         for i, option in enumerate(self.options):
             if i == self.selected_index:
-                text_str = f">{option}<"
+                text_str = f"{option}"
                 color = (125, 33, 129)
             else:
                 text_str = option

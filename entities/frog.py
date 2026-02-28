@@ -40,18 +40,24 @@ class Frog(pygame.sprite.Sprite):
 
     def update(self):
         if not self.frames: self.frames = self._prepare_frames()
+        
         if self.state == "ALIVE":
             self.index = 1 if self.anim_timer > 0 else 0
             if self.anim_timer > 0: self.anim_timer -= 1
             if self.frames["UP"]: self.image = self.frames[self.direction][self.index]
+            
         elif self.state == "DEAD":
             if self.death_frames:
-                self.image = self.death_frames[int(self.death_index)]
+                # --- AQUÍ ESTÁ EL SEGURO ANTI-CRASHEO ---
+                safe_index = min(int(self.death_index), len(self.death_frames) - 1)
+                self.image = self.death_frames[safe_index]
+                
                 self.death_index += self.death_speed
                 if self.death_index >= len(self.death_frames): 
                     self.is_finished = True 
             else: 
                 self.is_finished = True
+                
         self.hitbox = self.rect.inflate(-22, -22)
 
     def move(self, direction, slots=None):
