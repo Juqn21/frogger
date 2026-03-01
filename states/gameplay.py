@@ -1,8 +1,8 @@
 import pygame
 import random
-import os  # <--- NUEVO IMPORT PARA LAS RUTAS
+import os  
 from states.base import State
-from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME, GAME_WIDTH, GAME_MUSIC_PATH
+from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME, GAME_WIDTH, GAME_MUSIC_PATH, COIN_SOUND_PATH, JUMP_SOUND_PATH, SQUASH_SOUND_PATH, TIME_SOUND_PATH, EXTRALIFE_SOUND_PATH
 from arcade_machine_sdk import BASE_WIDTH, BASE_HEIGHT
 from entities.frog import Frog
 from entities.obstacles import Car, Log, Turtle, Snake, Crocodile, Coin
@@ -22,6 +22,16 @@ class GameplayState(State):
         self.target_log = None
         
         self.next_coin_spawn_time = 0 
+        self.coin_sound = None 
+        self.jump_sound = None 
+        self.squash_sound = None
+        self.time_sound = None 
+        self.extralife_sound = None 
+        self.time_warning_played = False 
+        
+        # --- NUEVAS VARIABLES DE TRANSICIÓN ---
+        self.pause_state = None 
+        self.pause_timer = 0.0
 
     def on_enter(self):
         if not self.background:
@@ -29,13 +39,30 @@ class GameplayState(State):
         if not self.goal_image:
             self.goal_image = pygame.transform.scale(pygame.image.load(GOAL_PATH).convert_alpha(), (34, 34))
             
-        # --- REPRODUCIR MÚSICA DE LA PARTIDA ---
+        if self.coin_sound is None:
+            if os.path.exists(COIN_SOUND_PATH):
+                self.coin_sound = pygame.mixer.Sound(COIN_SOUND_PATH)
+
+        if self.jump_sound is None:
+            if os.path.exists(JUMP_SOUND_PATH):
+                self.jump_sound = pygame.mixer.Sound(JUMP_SOUND_PATH)
+
+        if self.squash_sound is None:
+            if os.path.exists(SQUASH_SOUND_PATH):
+                self.squash_sound = pygame.mixer.Sound(SQUASH_SOUND_PATH)
+
+        if self.time_sound is None:
+            if os.path.exists(TIME_SOUND_PATH):
+                self.time_sound = pygame.mixer.Sound(TIME_SOUND_PATH)
+
+        if self.extralife_sound is None:
+            if os.path.exists(EXTRALIFE_SOUND_PATH):
+                self.extralife_sound = pygame.mixer.Sound(EXTRALIFE_SOUND_PATH)
+
         if os.path.exists(GAME_MUSIC_PATH):
             pygame.mixer.music.load(GAME_MUSIC_PATH)
-            pygame.mixer.music.set_volume(self.game.volume) # Mantiene el volumen que ajustaste en opciones
-            pygame.mixer.music.play(-1) # -1 significa loop infinito
-        else:
-            print(f"Advertencia: No se encontró {GAME_MUSIC_PATH}")
+            pygame.mixer.music.set_volume(self.game.volume * 0.2) 
+            pygame.mixer.music.play(-1) 
             
         self.reset_level_entities()
 
@@ -48,7 +75,6 @@ class GameplayState(State):
         self._setup_entities()
         
         self.next_coin_spawn_time = pygame.time.get_ticks() + random.randint(8000, 15000)
-        
         self.spawn_frog()
 
     def _setup_entities(self):
@@ -91,10 +117,37 @@ class GameplayState(State):
         self.frog = Frog(self.start_x, self.start_y, MARGIN_X)
         self.all_sprites = pygame.sprite.Group(self.frog)
         self.game.time_left = MAX_TIME
+        self.time_warning_played = False 
         self.max_row_reached = 14 
 
     def update(self, dt):
         current_time = pygame.time.get_ticks()
+        old_lives = self.game.lives 
+        
+        # --- 1. MODO PAUSA CINEMATOGRÁFICA ---
+        if self.pause_state is not None:
+            self.pause_timer -= dt
+            
+            # Dejamos que los carros y troncos se muevan para que el mundo se sienta vivo
+            for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles, self.coins]: 
+                group.update()
+                
+            if self.pause_timer <= 0:
+                if self.pause_state == "LEVEL_TRANSITION":
+                    self.game.level += 1
+                    self.game.lives = min(self.game.lives + 1, 9)
+                    self.game.difficulty_multiplier += 0.15 
+                    self.game.slots_ocupados = [False]*5
+                    self.reset_level_entities()
+                elif self.pause_state == "GOAL_TRANSITION":
+                    self.spawn_frog()
+                elif self.pause_state == "GAME_OVER_TRANSITION":
+                    self.game.change_state("GAME_OVER")
+                self.pause_state = None
+            
+            # Cortamos el update aquí para que el tiempo no baje y la rana sea invencible
+            return 
+        # ------------------------------------
         
         if current_time >= self.next_coin_spawn_time:
             platforms = list(self.logs) + list(self.crocodiles)
@@ -105,6 +158,13 @@ class GameplayState(State):
         if self.frog.state == "ALIVE":
             if not self.game.god_mode:
                 self.game.time_left -= dt
+                
+                if self.game.time_left <= 5 and not self.time_warning_played:
+                    self.time_warning_played = True
+                    if self.time_sound:
+                        self.time_sound.set_volume(self.game.sfx_volume)
+                        self.time_sound.play(-1) 
+                
                 if self.game.time_left <= 0: self.handle_death(); return
             
             if not self.game.god_mode:
@@ -117,6 +177,9 @@ class GameplayState(State):
                 if self.frog.rect.colliderect(c.hitbox):
                     self.game._add_score(100) 
                     c.kill() 
+                    if self.coin_sound:
+                        self.coin_sound.set_volume(self.game.sfx_volume * 0.15) 
+                        self.coin_sound.play()
                     
             frog_center_y = self.frog.hitbox.centery
             river_top, river_bottom = OFFSET_Y + TILE_SIZE, OFFSET_Y + 6 * TILE_SIZE
@@ -143,10 +206,17 @@ class GameplayState(State):
                 if on_safe_ground: self.frog.rect.x += platform_speed
                 elif not self.game.god_mode: self.handle_death(); return
 
+            if self.game.lives > old_lives and self.extralife_sound:
+                self.extralife_sound.set_volume(self.game.sfx_volume)
+                self.extralife_sound.play()
+
         if self.frog.is_finished:
             if self.game.lives <= 0:
-                pygame.mixer.music.stop() # <--- APAGAMOS LA MÚSICA AL PERDER
-                self.game.change_state("GAME_OVER")
+                # --- PAUSA DE MUERTE DEFINITIVA ---
+                if self.pause_state != "GAME_OVER_TRANSITION":
+                    pygame.mixer.music.stop() 
+                    self.pause_state = "GAME_OVER_TRANSITION"
+                    self.pause_timer = 1.5
             else:
                 self.spawn_frog()
             return 
@@ -161,23 +231,39 @@ class GameplayState(State):
                 elif s.rect.right >= MARGIN_X + GAME_WIDTH: s.speed = -abs(s.speed)
 
     def handle_events(self, events):
+        # Ignorar teclado si estamos en pausa cinematográfica
+        if self.pause_state is not None:
+            return 
+            
         for e in events:
             if e.type == pygame.KEYDOWN:
+                old_lives = self.game.lives 
+                
                 if e.key == pygame.K_g: self.game.god_mode = not self.game.god_mode
+                if e.key == pygame.K_l: self.game.lives = min(self.game.lives + 1, 9) 
                 
                 if self.frog.state == "ALIVE":
                     old_y = self.frog.rect.y
                     res = None
+                    is_movement_key = False 
                     
                     if e.key == self.game.controls["UP"]: 
                         res = self.frog.move("UP", self.slots_rangos)
+                        is_movement_key = True
                     elif e.key == self.game.controls["DOWN"]: 
                         res = self.frog.move("DOWN")
+                        is_movement_key = True
                     elif e.key == self.game.controls["LEFT"]: 
                         res = self.frog.move("LEFT")
+                        is_movement_key = True
                     elif e.key == self.game.controls["RIGHT"]: 
                         res = self.frog.move("RIGHT")
+                        is_movement_key = True
                     
+                    if is_movement_key and self.jump_sound:
+                        self.jump_sound.set_volume(self.game.sfx_volume) 
+                        self.jump_sound.play()
+
                     if e.key == self.game.controls["UP"] and self.frog.rect.y < old_y:
                         current_row = (self.frog.rect.y - OFFSET_Y) // TILE_SIZE
                         if current_row < self.max_row_reached:
@@ -188,19 +274,37 @@ class GameplayState(State):
                         if not self.game.slots_ocupados[res]:
                             self.game.slots_ocupados[res] = True
                             self.game._add_score(100)
+                            
+                            if self.time_sound:
+                                self.time_sound.stop()
+                                
+                            # --- BLOQUEAMOS LA RANA EN LA META PARA LA FOTO ---
+                            self.frog.state = "SAFE" 
+                            self.frog.rect.y = OFFSET_Y + 3
+                            self.frog.rect.x = (self.slots_rangos[res][0] + self.slots_rangos[res][1]) // 2 - 17
+                                
                             if all(self.game.slots_ocupados): 
                                 self.game._add_score(1000)
-                                self.game.level += 1
-                                self.game.lives = min(self.game.lives + 1, 9)
-                                self.game.difficulty_multiplier += 0.15 
-                                self.game.slots_ocupados = [False]*5
-                                self.reset_level_entities()
-                            else: self.spawn_frog()
+                                # INICIAMOS EL CAMBIO DE NIVEL (2 SEGUNDOS)
+                                self.pause_state = "LEVEL_TRANSITION"
+                                self.pause_timer = 2.0 
+                            else: 
+                                # INICIAMOS PAUSA DE META CORTA (0.5 SEGUNDOS)
+                                self.pause_state = "GOAL_TRANSITION"
+                                self.pause_timer = 0.5 
                         else: self.frog.rect.y += TILE_SIZE 
+                        
+                    if self.game.lives > old_lives and self.extralife_sound:
+                        self.extralife_sound.set_volume(self.game.sfx_volume)
+                        self.extralife_sound.play()
 
     def handle_death(self):
         if self.frog.state == "ALIVE":
             self.game.lives -= 1
+            if self.time_sound: self.time_sound.stop()
+            if self.squash_sound:
+                self.squash_sound.set_volume(self.game.sfx_volume)
+                self.squash_sound.play()
             self.frog.die()
 
     def render(self, surface):
@@ -235,3 +339,20 @@ class GameplayState(State):
         self.game._draw_text_with_shadow(surface, f"LIVES: {self.game.lives}", (17, 175), (255, 50, 50))
         if self.game.god_mode:
             self.game._draw_text_with_shadow(surface, "GOD MODE", (10, 250), (255, 140, 0))
+            
+        # --- DIBUJAR LETRERO DE NIVEL COMPLETADO ---
+        if self.pause_state == "LEVEL_TRANSITION":
+            txt = f"LEVEL {self.game.level} CLEARED!"
+            txt_w, txt_h = self.game.font_menu.size(txt)
+            x_pos = (BASE_WIDTH // 2) - (txt_w // 2)
+            y_pos = (BASE_HEIGHT // 2) - (txt_h // 2)
+            
+            # Fondo negro translúcido
+            overlay = pygame.Surface((BASE_WIDTH, txt_h + 20), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 180))
+            surface.blit(overlay, (0, y_pos - 10))
+            
+            txt_borde = self.game.font_menu.render(txt, False, (0, 0, 0))
+            txt_color = self.game.font_menu.render(txt, False, (50, 255, 50))
+            surface.blit(txt_borde, (x_pos + 3, y_pos + 3))
+            surface.blit(txt_color, (x_pos, y_pos))

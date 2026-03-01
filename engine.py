@@ -1,6 +1,6 @@
 import pygame
 import os
-import json  # <--- NUEVO IMPORT PARA GUARDAR DATOS
+import json 
 from arcade_machine_sdk import GameBase, GameMeta, BASE_WIDTH, BASE_HEIGHT
 from constants import MAX_TIME, BASE_PATH
 from states.menu import MenuState
@@ -31,10 +31,12 @@ class Game(GameBase):
         self.god_mode = False 
         self.slots_ocupados = [False] * 5
         
-        # --- SISTEMA DE GUARDADO ---
         self.config_path = os.path.join(BASE_PATH, "config.json")
         
-        self.volume = 1.0 
+        # --- AHORA TENEMOS DOS VOLÚMENES SEPARADOS ---
+        self.volume = 1.0      # Para la música de fondo
+        self.sfx_volume = 1.0  # Para los efectos de sonido (saltos, monedas, etc)
+        
         self.controls = {
             "UP": pygame.K_UP,
             "DOWN": pygame.K_DOWN,
@@ -42,7 +44,6 @@ class Game(GameBase):
             "RIGHT": pygame.K_RIGHT
         }
         
-        # Cargamos los datos guardados antes de iniciar los estados
         self.load_config()
         
         self.states = {
@@ -56,14 +57,13 @@ class Game(GameBase):
         if hasattr(self.current_state, "on_enter"):
             self.current_state.on_enter()
 
-    # --- NUEVAS FUNCIONES DE GUARDADO ---
     def load_config(self):
-        """Lee el archivo JSON y aplica los controles y volumen guardados."""
         if os.path.exists(self.config_path):
             try:
                 with open(self.config_path, "r") as f:
                     data = json.load(f)
                     self.volume = data.get("volume", 1.0)
+                    self.sfx_volume = data.get("sfx_volume", 1.0) # <--- CARGA EL NUEVO VOLUMEN
                     saved_controls = data.get("controls", {})
                     for key, val in saved_controls.items():
                         if key in self.controls:
@@ -72,9 +72,9 @@ class Game(GameBase):
                 print(f"Error cargando config: {e}")
 
     def save_config(self):
-        """Escribe los controles y volumen actuales en el archivo JSON."""
         data = {
             "volume": self.volume,
+            "sfx_volume": self.sfx_volume, # <--- GUARDA EL NUEVO VOLUMEN
             "controls": self.controls
         }
         try:
@@ -82,7 +82,6 @@ class Game(GameBase):
                 json.dump(data, f)
         except Exception as e:
             print(f"Error guardando config: {e}")
-    # ------------------------------------
 
     def _add_score(self, points):
         old_score = self.score

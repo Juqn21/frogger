@@ -29,4 +29,11 @@ COIN_PATH = os.path.join(IMG_DIR, "coin_fr.png")
 
 # Rutas de Audio
 MENU_MUSIC_PATH = os.path.join(SOUND_DIR, "Bubblegump.mp3")
-GAME_MUSIC_PATH = os.path.join(SOUND_DIR, "8Bit_Arcade.mp3") # <--- NUEVA MÚSICA DE GAMEPLAY
+GAME_MUSIC_PATH = os.path.join(SOUND_DIR, "8Bit_Arcade.mp3") 
+COIN_SOUND_PATH = os.path.join(SOUND_DIR, "coin_frog.mp3")
+JUMP_SOUND_PATH = os.path.join(SOUND_DIR, "jump_frog.wav")
+SQUASH_SOUND_PATH = os.path.join(SOUND_DIR, "squash_frog.wav")
+TIME_SOUND_PATH = os.path.join(SOUND_DIR, "time_frog.wav") 
+EXTRALIFE_SOUND_PATH = os.path.join(SOUND_DIR, "frog_extralife.wav")
+SELECT_SOUND_PATH = os.path.join(SOUND_DIR, "select_option.mp3") 
+GAME_OVER_SOUND_PATH = os.path.join(SOUND_DIR, "Game_over.mp3") # <--- NUEVO SONIDO

@@ -1,7 +1,7 @@
 import pygame
 import os
 from states.base import State
-from constants import IMG_DIR
+from constants import IMG_DIR, GAME_OVER_SOUND_PATH # <--- AGREGAMOS LA RUTA DEL SONIDO
 from arcade_machine_sdk import BASE_WIDTH, BASE_HEIGHT
 
 class GameOverState(State):
@@ -36,6 +36,12 @@ class GameOverState(State):
         self.index = 0
         self.selected_index = 0
 
+        # --- AQUI REPRODUCIMOS EL SONIDO UNA SOLA VEZ AL ENTRAR ---
+        if os.path.exists(GAME_OVER_SOUND_PATH):
+            pygame.mixer.music.load(GAME_OVER_SOUND_PATH)
+            pygame.mixer.music.set_volume(self.game.volume * 0.2) 
+            pygame.mixer.music.play(0) # 0 = sin repeticiones extra
+
     def update(self, dt):
         if self.frames:
             self.index += self.anim_speed
@@ -55,6 +61,7 @@ class GameOverState(State):
                         self.selected_index = 0
                         
                 elif e.key == pygame.K_RETURN:
+                    pygame.mixer.music.stop() # <--- APAGAMOS EL SONIDO AL SALIR
                     selected = self.options[self.selected_index]
                     if selected == "RETRY":
                         self.game.change_state("PLAYING")
