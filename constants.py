@@ -36,4 +36,5 @@ SQUASH_SOUND_PATH = os.path.join(SOUND_DIR, "squash_frog.wav")
 TIME_SOUND_PATH = os.path.join(SOUND_DIR, "time_frog.wav") 
 EXTRALIFE_SOUND_PATH = os.path.join(SOUND_DIR, "frog_extralife.wav")
 SELECT_SOUND_PATH = os.path.join(SOUND_DIR, "select_option.mp3") 
-GAME_OVER_SOUND_PATH = os.path.join(SOUND_DIR, "Game_over.mp3") # <--- NUEVO SONIDO
+SLOT_SOUND_PATH = os.path.join(SOUND_DIR, "frog_slot.wav") # <--- NUEVO SONIDO DE META
+GAME_OVER_SOUND_PATH = os.path.join(SOUND_DIR, "Game_over.mp3")

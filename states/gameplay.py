@@ -1,8 +1,9 @@
 import pygame
 import random
-import os  
+import os
+import math 
 from states.base import State
-from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME, GAME_WIDTH, GAME_MUSIC_PATH, COIN_SOUND_PATH, JUMP_SOUND_PATH, SQUASH_SOUND_PATH, TIME_SOUND_PATH, EXTRALIFE_SOUND_PATH
+from constants import MARGIN_X, OFFSET_Y, TILE_SIZE, MAP_PATH, GOAL_PATH, MAX_TIME, GAME_WIDTH, GAME_MUSIC_PATH, COIN_SOUND_PATH, JUMP_SOUND_PATH, SQUASH_SOUND_PATH, TIME_SOUND_PATH, EXTRALIFE_SOUND_PATH, SELECT_SOUND_PATH, SLOT_SOUND_PATH
 from arcade_machine_sdk import BASE_WIDTH, BASE_HEIGHT
 from entities.frog import Frog
 from entities.obstacles import Car, Log, Turtle, Snake, Crocodile, Coin
@@ -27,37 +28,45 @@ class GameplayState(State):
         self.squash_sound = None
         self.time_sound = None 
         self.extralife_sound = None 
+        self.select_sound = None 
+        self.slot_sound = None
         self.time_warning_played = False 
         
-        # --- NUEVAS VARIABLES DE TRANSICIÓN ---
         self.pause_state = None 
         self.pause_timer = 0.0
+        
+        self.is_paused = False
+        self.pause_options = ["RESUME", "RESTART", "MENU"]
+        self.pause_selected_index = 0
+        
+        self.display_score = 0.0      
+        self.floating_texts = []      
 
     def on_enter(self):
+        self.is_paused = False 
+        self.pause_selected_index = 0
+        self.display_score = self.game.score 
+        self.floating_texts.clear()
+        
         if not self.background:
             self.background = pygame.image.load(MAP_PATH).convert()
         if not self.goal_image:
             self.goal_image = pygame.transform.scale(pygame.image.load(GOAL_PATH).convert_alpha(), (34, 34))
             
         if self.coin_sound is None:
-            if os.path.exists(COIN_SOUND_PATH):
-                self.coin_sound = pygame.mixer.Sound(COIN_SOUND_PATH)
-
+            if os.path.exists(COIN_SOUND_PATH): self.coin_sound = pygame.mixer.Sound(COIN_SOUND_PATH)
         if self.jump_sound is None:
-            if os.path.exists(JUMP_SOUND_PATH):
-                self.jump_sound = pygame.mixer.Sound(JUMP_SOUND_PATH)
-
+            if os.path.exists(JUMP_SOUND_PATH): self.jump_sound = pygame.mixer.Sound(JUMP_SOUND_PATH)
         if self.squash_sound is None:
-            if os.path.exists(SQUASH_SOUND_PATH):
-                self.squash_sound = pygame.mixer.Sound(SQUASH_SOUND_PATH)
-
+            if os.path.exists(SQUASH_SOUND_PATH): self.squash_sound = pygame.mixer.Sound(SQUASH_SOUND_PATH)
         if self.time_sound is None:
-            if os.path.exists(TIME_SOUND_PATH):
-                self.time_sound = pygame.mixer.Sound(TIME_SOUND_PATH)
-
+            if os.path.exists(TIME_SOUND_PATH): self.time_sound = pygame.mixer.Sound(TIME_SOUND_PATH)
         if self.extralife_sound is None:
-            if os.path.exists(EXTRALIFE_SOUND_PATH):
-                self.extralife_sound = pygame.mixer.Sound(EXTRALIFE_SOUND_PATH)
+            if os.path.exists(EXTRALIFE_SOUND_PATH): self.extralife_sound = pygame.mixer.Sound(EXTRALIFE_SOUND_PATH)
+        if self.select_sound is None:
+            if os.path.exists(SELECT_SOUND_PATH): self.select_sound = pygame.mixer.Sound(SELECT_SOUND_PATH)
+        if self.slot_sound is None:
+            if os.path.exists(SLOT_SOUND_PATH): self.slot_sound = pygame.mixer.Sound(SLOT_SOUND_PATH)
 
         if os.path.exists(GAME_MUSIC_PATH):
             pygame.mixer.music.load(GAME_MUSIC_PATH)
@@ -67,13 +76,10 @@ class GameplayState(State):
         self.reset_level_entities()
 
     def reset_level_entities(self):
-        for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles, self.coins]:
-            group.empty()
-            
+        for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles, self.coins]: group.empty()
         self.trunk_snake = None
         self.target_log = None
         self._setup_entities()
-        
         self.next_coin_spawn_time = pygame.time.get_ticks() + random.randint(8000, 15000)
         self.spawn_frog()
 
@@ -120,22 +126,42 @@ class GameplayState(State):
         self.time_warning_played = False 
         self.max_row_reached = 14 
 
+    def spawn_floating_text(self, text, x, y, color=(255, 255, 255)):
+        self.floating_texts.append({
+            'text': text,
+            'x': x,
+            'y': y,
+            'timer': 1.0, 
+            'color': color
+        })
+
     def update(self, dt):
+        if self.is_paused:
+            return
+
         current_time = pygame.time.get_ticks()
         old_lives = self.game.lives 
         
-        # --- 1. MODO PAUSA CINEMATOGRÁFICA ---
+        if self.display_score < self.game.score:
+            self.display_score += (self.game.score - self.display_score) * 10 * dt
+            if self.game.score - self.display_score < 0.5:
+                self.display_score = self.game.score
+                
+        for ft in self.floating_texts:
+            ft['y'] -= 40 * dt  
+            ft['timer'] -= dt
+        self.floating_texts = [ft for ft in self.floating_texts if ft['timer'] > 0]
+        
         if self.pause_state is not None:
             self.pause_timer -= dt
-            
-            # Dejamos que los carros y troncos se muevan para que el mundo se sienta vivo
-            for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles, self.coins]: 
-                group.update()
-                
+            for group in [self.cars, self.logs, self.turtles, self.snakes, self.crocodiles, self.coins]: group.update()
             if self.pause_timer <= 0:
                 if self.pause_state == "LEVEL_TRANSITION":
                     self.game.level += 1
                     self.game.lives = min(self.game.lives + 1, 9)
+                    if self.extralife_sound:
+                        self.extralife_sound.set_volume(self.game.sfx_volume)
+                        self.extralife_sound.play()
                     self.game.difficulty_multiplier += 0.15 
                     self.game.slots_ocupados = [False]*5
                     self.reset_level_entities()
@@ -144,10 +170,7 @@ class GameplayState(State):
                 elif self.pause_state == "GAME_OVER_TRANSITION":
                     self.game.change_state("GAME_OVER")
                 self.pause_state = None
-            
-            # Cortamos el update aquí para que el tiempo no baje y la rana sea invencible
             return 
-        # ------------------------------------
         
         if current_time >= self.next_coin_spawn_time:
             platforms = list(self.logs) + list(self.crocodiles)
@@ -158,13 +181,11 @@ class GameplayState(State):
         if self.frog.state == "ALIVE":
             if not self.game.god_mode:
                 self.game.time_left -= dt
-                
                 if self.game.time_left <= 5 and not self.time_warning_played:
                     self.time_warning_played = True
                     if self.time_sound:
                         self.time_sound.set_volume(self.game.sfx_volume)
                         self.time_sound.play(-1) 
-                
                 if self.game.time_left <= 0: self.handle_death(); return
             
             if not self.game.god_mode:
@@ -176,6 +197,7 @@ class GameplayState(State):
             for c in self.coins:
                 if self.frog.rect.colliderect(c.hitbox):
                     self.game._add_score(100) 
+                    self.spawn_floating_text("+100", c.rect.x, c.rect.y, (255, 215, 0))
                     c.kill() 
                     if self.coin_sound:
                         self.coin_sound.set_volume(self.game.sfx_volume * 0.15) 
@@ -212,7 +234,6 @@ class GameplayState(State):
 
         if self.frog.is_finished:
             if self.game.lives <= 0:
-                # --- PAUSA DE MUERTE DEFINITIVA ---
                 if self.pause_state != "GAME_OVER_TRANSITION":
                     pygame.mixer.music.stop() 
                     self.pause_state = "GAME_OVER_TRANSITION"
@@ -231,12 +252,53 @@ class GameplayState(State):
                 elif s.rect.right >= MARGIN_X + GAME_WIDTH: s.speed = -abs(s.speed)
 
     def handle_events(self, events):
-        # Ignorar teclado si estamos en pausa cinematográfica
-        if self.pause_state is not None:
-            return 
-            
         for e in events:
             if e.type == pygame.KEYDOWN:
+                
+                if e.key in [pygame.K_p, pygame.K_ESCAPE]:
+                    if self.pause_state is None:
+                        self.is_paused = not self.is_paused
+                        self.pause_selected_index = 0
+                        if self.is_paused: pygame.mixer.music.pause()
+                        else: pygame.mixer.music.unpause()
+                
+                if self.is_paused:
+                    if e.key == self.game.controls["UP"]:
+                        self.pause_selected_index -= 1
+                        if self.pause_selected_index < 0: self.pause_selected_index = len(self.pause_options) - 1
+                        if self.select_sound:
+                            self.select_sound.set_volume(self.game.sfx_volume * 0.15)
+                            self.select_sound.play()
+                    elif e.key == self.game.controls["DOWN"]:
+                        self.pause_selected_index += 1
+                        if self.pause_selected_index >= len(self.pause_options): self.pause_selected_index = 0
+                        if self.select_sound:
+                            self.select_sound.set_volume(self.game.sfx_volume * 0.15)
+                            self.select_sound.play()
+                    elif e.key == pygame.K_RETURN:
+                        if self.select_sound:
+                            self.select_sound.set_volume(self.game.sfx_volume * 0.15)
+                            self.select_sound.play()
+                        selected = self.pause_options[self.pause_selected_index]
+                        if selected == "RESUME":
+                            self.is_paused = False
+                            pygame.mixer.music.unpause()
+                        elif selected == "RESTART":
+                            self.game.lives = 5
+                            self.game.level = 1
+                            self.game.score = 0
+                            self.game.difficulty_multiplier = 1.0
+                            self.game.slots_ocupados = [False] * 5
+                            pygame.mixer.music.stop()
+                            self.game.change_state("PLAYING")
+                        elif selected == "MENU":
+                            pygame.mixer.music.stop()
+                            self.game.change_state("START")
+                    continue 
+                
+                if self.pause_state is not None:
+                    return 
+                    
                 old_lives = self.game.lives 
                 
                 if e.key == pygame.K_g: self.game.god_mode = not self.game.god_mode
@@ -275,21 +337,24 @@ class GameplayState(State):
                             self.game.slots_ocupados[res] = True
                             self.game._add_score(100)
                             
-                            if self.time_sound:
-                                self.time_sound.stop()
+                            slot_x = (self.slots_rangos[res][0] + self.slots_rangos[res][1]) // 2 - 17
+                            self.spawn_floating_text("+100", slot_x, OFFSET_Y + 10, (0, 255, 255))
+                            
+                            if self.time_sound: self.time_sound.stop()
                                 
-                            # --- BLOQUEAMOS LA RANA EN LA META PARA LA FOTO ---
                             self.frog.state = "SAFE" 
-                            self.frog.rect.y = OFFSET_Y + 3
-                            self.frog.rect.x = (self.slots_rangos[res][0] + self.slots_rangos[res][1]) // 2 - 17
+                            self.frog.rect.x = -1000
+                            self.frog.rect.y = -1000
+                            
+                            if self.slot_sound:
+                                self.slot_sound.set_volume(self.game.sfx_volume)
+                                self.slot_sound.play()
                                 
                             if all(self.game.slots_ocupados): 
                                 self.game._add_score(1000)
-                                # INICIAMOS EL CAMBIO DE NIVEL (2 SEGUNDOS)
                                 self.pause_state = "LEVEL_TRANSITION"
                                 self.pause_timer = 2.0 
                             else: 
-                                # INICIAMOS PAUSA DE META CORTA (0.5 SEGUNDOS)
                                 self.pause_state = "GOAL_TRANSITION"
                                 self.pause_timer = 0.5 
                         else: self.frog.rect.y += TILE_SIZE 
@@ -320,11 +385,33 @@ class GameplayState(State):
         
         for gp in [self.turtles, self.logs, self.crocodiles, self.coins, self.snakes, self.cars, self.all_sprites]:
             gp.draw(surface)
+            
         surface.set_clip(None)
         
-        t_max_w, t_h = 200, 15
-        t_x, t_y = BASE_WIDTH - 220, 750 
+        # --- AQUÍ ESTÁ EL ARREGLO: FONT_UI EN VEZ DE FONT_MENU ---
+        for ft in self.floating_texts:
+            alpha = max(0, min(255, int(ft['timer'] * 255)))
+            txt_surf = self.game.font_ui.render(ft['text'], False, ft['color'])
+            txt_border = self.game.font_ui.render(ft['text'], False, (0, 0, 0))
+            txt_surf.set_alpha(alpha)
+            txt_border.set_alpha(alpha)
+            surface.blit(txt_border, (int(ft['x']) + 2, int(ft['y']) + 2))
+            surface.blit(txt_surf, (int(ft['x']), int(ft['y'])))
+            
+        self.game._draw_text_with_shadow(surface, f"LEVEL: {self.game.level}", (17, 63))
+        self.game._draw_text_with_shadow(surface, f"SCORE: {int(self.display_score):05d}", (16, 119))
+        self.game._draw_text_with_shadow(surface, f"LIVES: {self.game.lives}", (17, 175), (255, 50, 50))
+        
         pct = max(0, self.game.time_left / MAX_TIME)
+        
+        time_color = (255, 255, 255)
+        if pct <= 0.25:
+            pulse = abs(math.sin(pygame.time.get_ticks() * 0.01))
+            time_color = (255, int(255 * pulse), int(255 * pulse))
+            
+        self.game._draw_text_with_shadow(surface, "TIME", (17, 231), time_color)
+        t_max_w, t_h = 120, 15  
+        t_x, t_y = 17, 258     
         
         if pct > 0.5: t_color = (0, 255, 0)
         elif pct > 0.25: t_color = (255, 255, 0)
@@ -332,22 +419,18 @@ class GameplayState(State):
 
         pygame.draw.rect(surface, (40, 40, 40), (t_x - 2, t_y - 2, t_max_w + 4, t_h + 4))
         pygame.draw.rect(surface, t_color, (t_x, t_y, t_max_w * pct, t_h))
-        self.game._draw_text_with_shadow(surface, "TIME", (t_x - 70, t_y - 5))
 
-        self.game._draw_text_with_shadow(surface, f"SCORE: {self.game.score:05d}", (16, 119))
-        self.game._draw_text_with_shadow(surface, f"LEVEL: {self.game.level}", (17, 63))
-        self.game._draw_text_with_shadow(surface, f"LIVES: {self.game.lives}", (17, 175), (255, 50, 50))
         if self.game.god_mode:
-            self.game._draw_text_with_shadow(surface, "GOD MODE", (10, 250), (255, 140, 0))
+            pulse = abs(math.sin(pygame.time.get_ticks() * 0.005))
+            gm_color = (255, int(140 * pulse), 0)
+            self.game._draw_text_with_shadow(surface, "GOD MODE", (10, 300), gm_color)
             
-        # --- DIBUJAR LETRERO DE NIVEL COMPLETADO ---
         if self.pause_state == "LEVEL_TRANSITION":
             txt = f"LEVEL {self.game.level} CLEARED!"
             txt_w, txt_h = self.game.font_menu.size(txt)
             x_pos = (BASE_WIDTH // 2) - (txt_w // 2)
             y_pos = (BASE_HEIGHT // 2) - (txt_h // 2)
             
-            # Fondo negro translúcido
             overlay = pygame.Surface((BASE_WIDTH, txt_h + 20), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 180))
             surface.blit(overlay, (0, y_pos - 10))
@@ -356,3 +439,34 @@ class GameplayState(State):
             txt_color = self.game.font_menu.render(txt, False, (50, 255, 50))
             surface.blit(txt_borde, (x_pos + 3, y_pos + 3))
             surface.blit(txt_color, (x_pos, y_pos))
+
+        if self.is_paused:
+            overlay = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 200))
+            surface.blit(overlay, (0, 0))
+            
+            txt_paused_borde = self.game.font_big.render("PAUSED", False, (0, 0, 0))
+            txt_paused_color = self.game.font_big.render("PAUSED", False, (255, 255, 0))
+            x_title = (BASE_WIDTH // 2) - (txt_paused_color.get_width() // 2)
+            y_title = (BASE_HEIGHT // 2) - 100
+            surface.blit(txt_paused_borde, (x_title + 3, y_title + 3))
+            surface.blit(txt_paused_color, (x_title, y_title))
+            
+            start_y = (BASE_HEIGHT // 2) - 10
+            spacing = 50
+            
+            for i, opt in enumerate(self.pause_options):
+                if i == self.pause_selected_index:
+                    text_str = f">{opt}<"
+                    color = (125, 33, 129)
+                else:
+                    text_str = opt
+                    color = (255, 255, 255)
+                    
+                txt_borde = self.game.font_menu.render(text_str, False, (0, 0, 0))
+                txt_color = self.game.font_menu.render(text_str, False, color)
+                x_pos = (BASE_WIDTH // 2) - (txt_color.get_width() // 2)
+                y_pos = start_y + (i * spacing)
+                
+                surface.blit(txt_borde, (x_pos + 3, y_pos + 3))
+                surface.blit(txt_color, (x_pos, y_pos))
