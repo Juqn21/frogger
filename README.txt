@@ -38,6 +38,4 @@ This project goes beyond recreating the classic mechanics of dodging traffic and
 | `L` | *(Debug)* Add Extra Lives |
 
 
-1. Clone this repository to your local machine:
-   ```bash
-   git clone [https://github.com/YOUR_USERNAME/frogger-arcade-clone.git](https://github.com/YOUR_USERNAME/frogger-arcade-clone.git)
+

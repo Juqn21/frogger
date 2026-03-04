@@ -59,8 +59,7 @@ class MenuState(State):
                     elif selected == "OPTIONS":
                         self.game.change_state("OPTIONS") 
                     elif selected == "EXIT":
-                        pygame.quit()
-                        sys.exit()
+                        self.game.stop()
 
     def render(self, surface):
         if self.bg_image:
