@@ -1,4 +1,4 @@
-# 🐸 Frogger Arcade Clone v0.9
+# 🐸 Frogger v1.0
 
 *(Scroll down for the Spanish version / Desplázate hacia abajo para la versión en español)*
 
