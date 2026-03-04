@@ -179,20 +179,18 @@ class GameplayState(State):
             self.next_coin_spawn_time = current_time + random.randint(8000, 15000)
 
         if self.frog.state == "ALIVE":
-            if not self.game.god_mode:
-                self.game.time_left -= dt
-                if self.game.time_left <= 5 and not self.time_warning_played:
-                    self.time_warning_played = True
-                    if self.time_sound:
-                        self.time_sound.set_volume(self.game.sfx_volume)
-                        self.time_sound.play(-1) 
-                if self.game.time_left <= 0: self.handle_death(); return
+            self.game.time_left -= dt
+            if self.game.time_left <= 5 and not self.time_warning_played:
+                self.time_warning_played = True
+                if self.time_sound:
+                    self.time_sound.set_volume(self.game.sfx_volume)
+                    self.time_sound.play(-1) 
+            if self.game.time_left <= 0: self.handle_death(); return
             
-            if not self.game.god_mode:
-                enemies = list(self.cars) + list(self.snakes)
-                for e in enemies:
-                    if self.frog.hitbox.colliderect(e.hitbox):
-                        self.handle_death(); return
+            enemies = list(self.cars) + list(self.snakes)
+            for e in enemies:
+                if self.frog.hitbox.colliderect(e.hitbox):
+                    self.handle_death(); return
 
             for c in self.coins:
                 if self.frog.rect.colliderect(c.hitbox):
@@ -226,7 +224,7 @@ class GameplayState(State):
                             else: on_safe_ground, platform_speed = True, c.speed
                             break
                 if on_safe_ground: self.frog.rect.x += platform_speed
-                elif not self.game.god_mode: self.handle_death(); return
+                else: self.handle_death(); return
 
             if self.game.lives > old_lives and self.extralife_sound:
                 self.extralife_sound.set_volume(self.game.sfx_volume)
@@ -300,9 +298,6 @@ class GameplayState(State):
                     return 
                     
                 old_lives = self.game.lives 
-                
-                if e.key == pygame.K_g: self.game.god_mode = not self.game.god_mode
-                if e.key == pygame.K_l: self.game.lives = min(self.game.lives + 1, 9) 
                 
                 if self.frog.state == "ALIVE":
                     old_y = self.frog.rect.y
@@ -388,7 +383,6 @@ class GameplayState(State):
             
         surface.set_clip(None)
         
-        # --- AQUÍ ESTÁ EL ARREGLO: FONT_UI EN VEZ DE FONT_MENU ---
         for ft in self.floating_texts:
             alpha = max(0, min(255, int(ft['timer'] * 255)))
             txt_surf = self.game.font_ui.render(ft['text'], False, ft['color'])
@@ -419,11 +413,6 @@ class GameplayState(State):
 
         pygame.draw.rect(surface, (40, 40, 40), (t_x - 2, t_y - 2, t_max_w + 4, t_h + 4))
         pygame.draw.rect(surface, t_color, (t_x, t_y, t_max_w * pct, t_h))
-
-        if self.game.god_mode:
-            pulse = abs(math.sin(pygame.time.get_ticks() * 0.005))
-            gm_color = (255, int(140 * pulse), 0)
-            self.game._draw_text_with_shadow(surface, "GOD MODE", (10, 300), gm_color)
             
         if self.pause_state == "LEVEL_TRANSITION":
             txt = f"LEVEL {self.game.level} CLEARED!"
